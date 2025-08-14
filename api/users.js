@@ -3,11 +3,11 @@ import mysql from 'mysql2/promise';
 
 // Konfigurasi Database Railway MySQL
 const dbConfig = {
-  host: process.env.MYSQL_HOST || 'your-railway-mysql-host',
-  user: process.env.MYSQL_USER || 'your-mysql-username', 
-  password: process.env.MYSQL_PASSWORD || 'your-mysql-password',
-  database: process.env.MYSQL_DATABASE || 'your-database-name',
-  port: process.env.MYSQL_PORT || 3306,
+  host: process.env.MYSQL_HOST || 'crossover.proxy.rlwy.net',
+  user: process.env.MYSQL_USER || 'root', 
+  password: process.env.MYSQL_PASSWORD || 'IsAjBruagMgUedLIqNUxiAFCNyTPASva',
+  database: process.env.MYSQL_DATABASE || 'railway',
+  port: process.env.MYSQL_PORT || 34842,
   ssl: {
     rejectUnauthorized: false
   },
@@ -254,4 +254,5 @@ export default async function handler(req, res) {
       await connection.end();
     }
   }
+
 }
