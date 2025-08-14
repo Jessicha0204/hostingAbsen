@@ -62,6 +62,7 @@ app.get('/', async (req, res) => {
         'POST /api/register', 
         'POST /api/login',
         'GET /api/users',
+        'POST /api/users',
         'GET /api/check/:username',
         'GET /api/health'
       ]
@@ -330,3 +331,4 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 module.exports = app;
+
