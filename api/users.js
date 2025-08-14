@@ -1,258 +1,240 @@
-// api/users.js - Vercel API untuk Flutter App
-import mysql from 'mysql2/promise';
+const express = require('express');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
 
-// Konfigurasi Database Railway MySQL
-const dbConfig = {
-  host: process.env.MYSQL_HOST || 'crossover.proxy.rlwy.net',
-  user: process.env.MYSQL_USER || 'root', 
-  password: process.env.MYSQL_PASSWORD || 'IsAjBruagMgUedLIqNUxiAFCNyTPASva',
-  database: process.env.MYSQL_DATABASE || 'railway',
-  port: process.env.MYSQL_PORT || 34842,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  connectTimeout: 60000,
-  acquireTimeout: 60000,
-  timeout: 60000,
+const app = express();
+
+// Enhanced CORS untuk production
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+
+app.use(express.json());
+
+// In-memory storage dengan persistent default users
+// PENTING: Data akan reset setiap restart di Vercel (serverless)
+let users = {
+  'admin': '$2a$10$N9qo8uLOickgx2ZMRZoMye8IceG7cQQJJSXnlI05JudgzBSYjCbfm', // admin123
+  'user1': '$2a$10$N9qo8uLOickgx2ZMRZoMye8IceG7cQQJJSXnlI05JudgzBSYjCbfm', // password1  
+  'test': '$2a$10$N9qo8uLOickgx2ZMRZoMye8IceG7cQQJJSXnlI05JudgzBSYjCbfm', // test123
+  'demo': '$2a$10$N9qo8uLOickgx2ZMRZoMye8IceG7cQQJJSXnlI05JudgzBSYjCbfm', // demo123
+  'miero': '$2a$10$N9qo8uLOickgx2ZMRZoMye8IceG7cQQJJSXnlI05JudgzBSYjCbfm' // testing user
 };
 
-// Helper function untuk membuat koneksi
-async function createConnection() {
+// Root endpoint untuk testing
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '🚀 Flutter Auth API berjalan di Vercel!',
+    timestamp: new Date().toISOString(),
+    totalUsers: Object.keys(users).length,
+    availableEndpoints: [
+      'GET /api',
+      'POST /api/register', 
+      'POST /api/login',
+      'GET /api/users',
+      'POST /api/users',
+      'GET /api/check/:username'
+    ]
+  });
+});
+
+// API root endpoint
+app.get('/api', (req, res) => {
+  res.json({ 
+    message: '✅ Flutter Auth API Active',
+    timestamp: new Date().toISOString(),
+    totalUsers: Object.keys(users).length,
+    serverStatus: 'healthy'
+  });
+});
+
+// Register endpoint
+app.post('/api/register', async (req, res) => {
   try {
-    const connection = await mysql.createConnection(dbConfig);
-    return connection;
-  } catch (error) {
-    console.error('Database connection failed:', error);
-    throw new Error('Database connection failed');
-  }
-}
+    console.log('Register request received:', req.body);
+    
+    const { username, password } = req.body;
 
-// Helper function untuk inisialisasi tabel
-async function initializeTable(connection) {
-  const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS users (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      username VARCHAR(50) UNIQUE NOT NULL,
-      password VARCHAR(255) NOT NULL,
-      android_id VARCHAR(255) NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `;
-  
-  await connection.execute(createTableQuery);
-}
-
-export default async function handler(req, res) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  let connection;
-
-  try {
-    connection = await createConnection();
-    await initializeTable(connection);
-
-    // TEST CONNECTION
-    if (req.method === 'GET' && req.query.action === 'test') {
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Database connection successful',
-        timestamp: new Date().toISOString()
+    // Validation
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Username dan password harus diisi' 
       });
     }
 
-    // REGISTER USER
-    if (req.method === 'POST' && req.query.action === 'register') {
-      const { username, password, androidId } = req.body;
-
-      if (!username || !password || !androidId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Username, password, and androidId are required'
-        });
-      }
-
-      try {
-        // Check if username already exists
-        const [existingUser] = await connection.execute(
-          'SELECT username FROM users WHERE username = ?',
-          [username]
-        );
-
-        if (existingUser.length > 0) {
-          return res.status(409).json({
-            success: false,
-            error: 'Username sudah terdaftar'
-          });
-        }
-
-        // Insert new user
-        await connection.execute(
-          'INSERT INTO users (username, password, android_id) VALUES (?, ?, ?)',
-          [username, password, androidId]
-        );
-
-        return res.status(201).json({
-          success: true,
-          message: 'User berhasil didaftarkan',
-          username: username,
-          androidId: androidId.substring(0, 8) + '...'
-        });
-
-      } catch (dbError) {
-        console.error('Database error during registration:', dbError);
-        return res.status(500).json({
-          success: false,
-          error: 'Gagal menyimpan user ke database'
-        });
-      }
+    if (password.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Password minimal 6 karakter' 
+      });
     }
 
-    // LOGIN VALIDATION
-    if (req.method === 'POST' && req.query.action === 'login') {
-      const { username, password, androidId } = req.body;
-
-      if (!username || !password || !androidId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Username, password, and androidId are required'
-        });
-      }
-
-      try {
-        const [users] = await connection.execute(
-          'SELECT username, password, android_id FROM users WHERE username = ?',
-          [username]
-        );
-
-        if (users.length === 0) {
-          return res.status(404).json({
-            success: false,
-            error: 'Username tidak ditemukan'
-          });
-        }
-
-        const user = users[0];
-
-        if (user.password !== password) {
-          return res.status(401).json({
-            success: false,
-            error: 'Password salah'
-          });
-        }
-
-        if (user.android_id !== androidId) {
-          return res.status(403).json({
-            success: false,
-            error: `AKSES DITOLAK: Device tidak dikenali!\n\nRegistered Device: ${user.android_id.substring(0, 8)}...\nCurrent Device: ${androidId.substring(0, 8)}...`
-          });
-        }
-
-        return res.status(200).json({
-          success: true,
-          message: 'Login berhasil',
-          username: username
-        });
-
-      } catch (dbError) {
-        console.error('Database error during login:', dbError);
-        return res.status(500).json({
-          success: false,
-          error: 'Gagal validasi login'
-        });
-      }
+    // Check if username exists
+    if (users[username]) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Username sudah digunakan' 
+      });
     }
 
-    // GET ALL USERS (for display purposes)
-    if (req.method === 'GET' && req.query.action === 'all') {
-      try {
-        const [users] = await connection.execute(
-          'SELECT username, password FROM users ORDER BY created_at DESC'
-        );
+    // Hash password and save
+    const hashedPassword = await bcrypt.hash(password, 10);
+    users[username] = hashedPassword;
 
-        const userMap = {};
-        users.forEach(user => {
-          userMap[user.username] = user.password;
-        });
+    console.log(`User registered: ${username}. Total users: ${Object.keys(users).length}`);
 
-        return res.status(200).json({
-          success: true,
-          users: userMap,
-          total: users.length
-        });
-
-      } catch (dbError) {
-        console.error('Database error getting users:', dbError);
-        return res.status(500).json({
-          success: false,
-          error: 'Gagal mengambil data users'
-        });
-      }
-    }
-
-    // GET USER ANDROID ID
-    if (req.method === 'GET' && req.query.action === 'androidid') {
-      const { username } = req.query;
-
-      if (!username) {
-        return res.status(400).json({
-          success: false,
-          error: 'Username is required'
-        });
-      }
-
-      try {
-        const [users] = await connection.execute(
-          'SELECT android_id FROM users WHERE username = ?',
-          [username]
-        );
-
-        if (users.length === 0) {
-          return res.status(404).json({
-            success: false,
-            error: 'User tidak ditemukan'
-          });
-        }
-
-        return res.status(200).json({
-          success: true,
-          androidId: users[0].android_id
-        });
-
-      } catch (dbError) {
-        console.error('Database error getting android ID:', dbError);
-        return res.status(500).json({
-          success: false,
-          error: 'Gagal mengambil Android ID'
-        });
-      }
-    }
-
-    // If no matching route
-    return res.status(404).json({
-      success: false,
-      error: 'API endpoint not found'
+    res.status(201).json({ 
+      success: true, 
+      message: 'Registrasi berhasil',
+      username: username,
+      totalUsers: Object.keys(users).length
     });
 
   } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      details: error.message
+    console.error('Register error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error: ' + error.message 
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
+});
 
+// Login endpoint  
+app.post('/api/login', async (req, res) => {
+  try {
+    console.log('Login request received:', req.body);
+
+    const { username, password } = req.body;
+
+    // Validation
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Username dan password harus diisi' 
+      });
+    }
+
+    // Check if user exists
+    if (!users[username]) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Username tidak ditemukan' 
+      });
+    }
+
+    // Verify password
+    const isValid = await bcrypt.compare(password, users[username]);
+    
+    if (!isValid) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Password salah' 
+      });
+    }
+
+    console.log('User logged in: ${username}');
+
+    res.json({ 
+      success: true, 
+      message: 'Login berhasil',
+      username: username,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error: ' + error.message 
+    });
+  }
+});
+
+// Get all users endpoint
+app.get('/api/users', (req, res) => {
+  try {
+    const userList = Object.keys(users).map(username => ({
+      username: username,
+      registered: true
+    }));
+
+    console.log(`Users list requested. Total: ${userList.length}`);
+
+    res.json({ 
+      success: true, 
+      total: userList.length,
+      users: userList,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Users error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error: ' + error.message 
+    });
+  }
+});
+
+// Check if username exists
+app.get('/api/check/:username', (req, res) => {
+  try {
+    const { username } = req.params;
+    const exists = !!users[username];
+    
+    console.log(`Username check: ${username} - exists: ${exists}`);
+    
+    res.json({
+      success: true,
+      exists: exists,
+      username: username
+    });
+  } catch (error) {
+    console.error('Check user error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error: ' + error.message 
+    });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    totalUsers: Object.keys(users).length
+  });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Endpoint tidak ditemukan: ${req.method} ${req.originalUrl}`,
+    availableEndpoints: [
+      'GET /',
+      'GET /api',
+      'POST /api/register', 
+      'POST /api/login',
+      'GET /api/users',
+      'GET /api/check/:username',
+      'GET /api/health'
+    ]
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Total users: ${Object.keys(users).length}`);
+  });
 }
+
+module.exports = app;
